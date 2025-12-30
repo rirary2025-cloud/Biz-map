@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-import { MapPin, LogOut, Menu, X } from 'lucide-react';
+import { MapPin, LogOut, Menu, X, Building2, Users, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface Branch {
   id: string;
@@ -26,24 +26,37 @@ interface Member {
   can_introduce: string;
 }
 
-const defaultIcon = L.icon({
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
-});
+const createColoredIcon = (color: string, size: [number, number] = [25, 41]) => {
+  const svgIcon = `
+    <svg width="${size[0]}" height="${size[1]}" viewBox="0 0 25 41" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12.5 0C5.6 0 0 5.6 0 12.5c0 8.4 12.5 28.5 12.5 28.5S25 20.9 25 12.5C25 5.6 19.4 0 12.5 0z" fill="${color}"/>
+      <circle cx="12.5" cy="12.5" r="6" fill="white"/>
+    </svg>
+  `;
+  return L.divIcon({
+    html: svgIcon,
+    className: 'custom-marker',
+    iconSize: size,
+    iconAnchor: [size[0] / 2, size[1]],
+    popupAnchor: [0, -size[1] + 10],
+  });
+};
 
-const branchIcon = L.icon({
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [35, 47],
-  iconAnchor: [17, 47],
-  popupAnchor: [1, -40],
-  shadowSize: [50, 50],
-  className: 'brightness-150',
-});
+const branchIcon = createColoredIcon('#dc2626', [32, 48]);
+const memberIcon = createColoredIcon('#2563eb', [25, 41]);
+
+interface MapControllerProps {
+  center: [number, number];
+  zoom: number;
+}
+
+const MapController: React.FC<MapControllerProps> = ({ center, zoom }) => {
+  const map = useMap();
+  useEffect(() => {
+    map.flyTo(center, zoom);
+  }, [center, zoom, map]);
+  return null;
+};
 
 export const Map: React.FC = () => {
   const { user, signOut } = useAuth();
@@ -52,6 +65,9 @@ export const Map: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [publicLevel, setPublicLevel] = useState<1 | 2 | 3>(user ? 3 : 1);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mapCenter, setMapCenter] = useState<[number, number]>([43.5, 142.0]);
+  const [mapZoom, setMapZoom] = useState(6);
 
   useEffect(() => {
     const loadData = async () => {
@@ -84,6 +100,16 @@ export const Map: React.FC = () => {
 
   const handleSignOut = async () => {
     await signOut();
+  };
+
+  const flyToBranch = (branch: Branch) => {
+    setMapCenter([branch.latitude, branch.longitude]);
+    setMapZoom(10);
+  };
+
+  const flyToMember = (member: Member) => {
+    setMapCenter([member.latitude, member.longitude]);
+    setMapZoom(12);
   };
 
   if (loading) {
@@ -177,58 +203,136 @@ export const Map: React.FC = () => {
         </div>
       </div>
 
-      <div className="relative w-full h-[calc(100vh-140px)]">
-        <MapContainer
-          center={[44.0, 141.3]}
-          zoom={5}
-          style={{ height: '100%', width: '100%' }}
+      <div className="relative w-full h-[calc(100vh-140px)] flex">
+        <div
+          className={`absolute left-0 top-0 h-full bg-white shadow-lg transition-all duration-300 z-10 ${
+            sidebarOpen ? 'w-80' : 'w-0'
+          } overflow-hidden`}
         >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+          <div className="p-4 h-full overflow-y-auto">
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <Building2 size={20} className="text-red-600" />
+                <h2 className="font-bold text-lg text-slate-900">支部一覧</h2>
+                <span className="text-sm text-slate-500">({branches.length})</span>
+              </div>
+              <div className="space-y-2">
+                {branches.map((branch) => (
+                  <button
+                    key={branch.id}
+                    onClick={() => flyToBranch(branch)}
+                    className="w-full text-left p-3 bg-red-50 hover:bg-red-100 rounded-lg transition border border-red-200"
+                  >
+                    <h3 className="font-semibold text-slate-900">{branch.name}</h3>
+                    <p className="text-sm text-slate-600">{branch.region} {branch.city}</p>
+                    <p className="text-xs text-slate-500 mt-1">会員数: {branch.member_count}名</p>
+                  </button>
+                ))}
+              </div>
+            </div>
 
-          {branches.map((branch) => (
-            <Marker
-              key={branch.id}
-              position={[branch.latitude, branch.longitude]}
-              icon={branchIcon}
-            >
-              <Popup>
-                <div className="p-3">
-                  <h3 className="font-bold text-slate-900">{branch.name}</h3>
-                  <p className="text-sm text-slate-600">{branch.region} {branch.city}</p>
-                  <p className="text-xs text-slate-500 mt-2">会員数: {branch.member_count}名</p>
+            {members.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Users size={20} className="text-blue-600" />
+                  <h2 className="font-bold text-lg text-slate-900">会員一覧</h2>
+                  <span className="text-sm text-slate-500">({members.length})</span>
                 </div>
-              </Popup>
-            </Marker>
-          ))}
+                <div className="space-y-2">
+                  {members.map((member) => (
+                    <button
+                      key={member.id}
+                      onClick={() => flyToMember(member)}
+                      className="w-full text-left p-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition border border-blue-200"
+                    >
+                      <h3 className="font-semibold text-slate-900">{member.display_name}</h3>
+                      {member.company_name && (
+                        <p className="text-sm text-slate-600">{member.company_name}</p>
+                      )}
+                      <p className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded mt-1 inline-block">
+                        {member.industry_1}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
-          {members.map((member) => (
-            <Marker
-              key={member.id}
-              position={[member.latitude, member.longitude]}
-              icon={defaultIcon}
-            >
-              <Popup>
-                <div className="p-3 max-w-xs">
-                  <h3 className="font-bold text-slate-900">{member.display_name}</h3>
-                  {member.company_name && (
-                    <p className="text-sm text-slate-600">{member.company_name}</p>
-                  )}
-                  <p className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded mt-2 inline-block">
-                    {member.industry_1}
-                  </p>
-                  {member.want_to_introduce && (
-                    <p className="text-xs text-slate-600 mt-2">
-                      <span className="font-semibold">依頼したい:</span> {member.want_to_introduce}
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className={`absolute top-4 ${
+            sidebarOpen ? 'left-80' : 'left-0'
+          } z-20 bg-white shadow-lg p-2 rounded-r-lg hover:bg-slate-50 transition-all duration-300`}
+        >
+          {sidebarOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
+        </button>
+
+        <div className={`flex-1 ${sidebarOpen ? 'ml-80' : 'ml-0'} transition-all duration-300`}>
+          <MapContainer
+            center={mapCenter}
+            zoom={mapZoom}
+            style={{ height: '100%', width: '100%' }}
+          >
+            <MapController center={mapCenter} zoom={mapZoom} />
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+
+            {branches.map((branch) => (
+              <Marker
+                key={branch.id}
+                position={[branch.latitude, branch.longitude]}
+                icon={branchIcon}
+              >
+                <Popup>
+                  <div className="p-3">
+                    <h3 className="font-bold text-slate-900 mb-1">{branch.name}</h3>
+                    <p className="text-sm text-slate-600">{branch.region} {branch.city}</p>
+                    {branch.founded_year && (
+                      <p className="text-xs text-slate-500 mt-1">設立: {branch.founded_year}年</p>
+                    )}
+                    <p className="text-xs text-slate-500">会員数: {branch.member_count}名</p>
+                  </div>
+                </Popup>
+              </Marker>
+            ))}
+
+            {members.map((member) => (
+              <Marker
+                key={member.id}
+                position={[member.latitude, member.longitude]}
+                icon={memberIcon}
+              >
+                <Popup>
+                  <div className="p-3 max-w-xs">
+                    <h3 className="font-bold text-slate-900 mb-1">{member.display_name}</h3>
+                    {member.company_name && (
+                      <p className="text-sm text-slate-600 mb-2">{member.company_name}</p>
+                    )}
+                    <p className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded inline-block mb-2">
+                      {member.industry_1}
                     </p>
-                  )}
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-        </MapContainer>
+                    {member.want_to_introduce && (
+                      <div className="mt-2 pt-2 border-t border-slate-200">
+                        <p className="text-xs font-semibold text-slate-700">依頼したい:</p>
+                        <p className="text-xs text-slate-600">{member.want_to_introduce}</p>
+                      </div>
+                    )}
+                    {member.can_introduce && (
+                      <div className="mt-2">
+                        <p className="text-xs font-semibold text-slate-700">紹介できる:</p>
+                        <p className="text-xs text-slate-600">{member.can_introduce}</p>
+                      </div>
+                    )}
+                  </div>
+                </Popup>
+              </Marker>
+            ))}
+          </MapContainer>
+        </div>
       </div>
     </div>
   );
